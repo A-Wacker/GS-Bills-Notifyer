@@ -388,6 +388,18 @@ architecture is unchanged.
    otherwise completely silent — the sheet still fills in and the email just stops finding
    anything due.
 
-The `:app` module is written but has not been compiled: this environment's network policy
-blocks `dl.google.com`, so neither the Android SDK nor any androidx artifact is reachable.
-Everything in `:domain` and `appsscript/` is tested and passing.
+The `:app` module could not be compiled in the environment it was written in — that
+network policy blocks `dl.google.com`, where both the Android SDK and every androidx
+artifact live. It is now built in GitHub Actions instead, which took four rounds to get
+green:
+
+1. `java.util.Properties()` in a build script — the Android plugin's `java` extension
+   shadows the `java` package. This also broke `:domain:test`, since Gradle configures
+   every project before running any task.
+2. `android.useAndroidX` missing from `gradle.properties`, which was written when this
+   build held only the JVM module.
+3. A notification icon tinted with `?attr/colorControlNormal`, an attribute only
+   AppCompat and Material define — neither of which this app uses.
+
+All three were configuration rather than logic. CI now produces a debug APK on every
+push.
