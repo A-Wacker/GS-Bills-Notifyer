@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -15,7 +17,7 @@ plugins {
  * credentials — see docs/SETUP.md.
  */
 fun localProperty(name: String, fallback: String = ""): String {
-    val properties = java.util.Properties()
+    val properties = Properties()
     val file = rootProject.file("local.properties")
     if (file.exists()) file.inputStream().use(properties::load)
     return properties.getProperty(name) ?: System.getenv(name) ?: fallback

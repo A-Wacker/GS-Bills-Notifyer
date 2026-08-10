@@ -77,7 +77,12 @@ jobs:
       - name: Confirm the app module is in the build
         working-directory: android
         run: |
-          ./gradlew projects | tee projects.txt
+          if ! ./gradlew projects > projects.txt 2>&1; then
+            echo "::error::Gradle configuration failed before the build could start."
+            cat projects.txt
+            exit 1
+          fi
+          cat projects.txt
           grep -q "Project ':app'" projects.txt || {
             echo "::error::The :app module was skipped — no Android SDK was detected."
             exit 1
