@@ -118,8 +118,8 @@ class BillsDaoTest {
             ),
         )
         assertEquals(LocalDate.parse("2026-01-31"), restored.firstDueDate)
-        assertEquals(1, restored.installmentAmountCents)
-        assertEquals(99_999, restored.finalAmountCents)
+        assertEquals(1L, restored.installmentAmountCents)
+        assertEquals(99_999L, restored.finalAmountCents)
         assertEquals("First Credit Union", restored.payee)
         assertEquals(true, restored.autopay)
     }
@@ -153,7 +153,7 @@ class BillsDaoTest {
         assertEquals("car", due.first().billId)
         assertEquals("Plan car", due.first().billName)
         assertEquals(2, due.first().sequence)
-        assertEquals(25_000, due.first().amountCents)
+        assertEquals(25_000L, due.first().amountCents)
     }
 
     @Test
@@ -255,7 +255,7 @@ class BillsDaoTest {
 
         var stored = dao.getBill("car")!!.occurrences.first { it.sequence == 1 }
         assertEquals(LocalDate.parse("2026-01-14"), stored.paidOn)
-        assertEquals(24_000, stored.paidAmountCents)
+        assertEquals(24_000L, stored.paidAmountCents)
 
         dao.setPaid("car#1", null, null, now)
         stored = dao.getBill("car")!!.occurrences.first { it.sequence == 1 }
