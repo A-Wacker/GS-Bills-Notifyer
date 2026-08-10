@@ -63,16 +63,23 @@ there are no conflicts.
 ## Building and testing
 
 ```bash
-cd android    && ./gradlew :domain:test   # 105 tests — schedule maths, payoff, mapping
-cd appsscript && npm test                 # 45 tests — digest selection, sync merge, contract
-cd android    && ./gradlew :app:assembleDebug   # needs the Android SDK
+cd android    && ./gradlew :domain:test          # 105 tests — schedule maths, payoff, mapping
+cd appsscript && npm test                        # 45 tests — digest selection, sync merge, contract
+cd android    && ./gradlew :app:testDebugUnitTest # 25 tests — Room queries, digest notification
+cd android    && ./gradlew :app:assembleDebug
 ```
 
 The first two need no Android SDK. `:app` is only included in the Gradle build when one is
 present, so the domain tests run anywhere — but note that where an SDK *is* present, `:app`
 is configured even for a `:domain:test` run, so a broken app build script will fail it.
 
-[CI](.github/workflows/ci.yml) runs all three on every push and uploads a debug APK.
+The `:app` tests run under Robolectric, so the Room SQL and the notification path execute for
+real on the JVM without an emulator. They cover the digest query (a join and a correlated
+subquery that would compile fine while being wrong), the flattening of the domain's sealed
+types into columns, and the worker itself — including that a run always arms the next one,
+which is the entire mechanism behind a daily notification.
+
+[CI](.github/workflows/ci.yml) runs all of it on every push and uploads a debug APK.
 
 Two of those suites check each other rather than themselves:
 
