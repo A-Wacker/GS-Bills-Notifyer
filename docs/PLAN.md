@@ -356,3 +356,38 @@ Advance warning (N days out), overdue nagging, weekly look-ahead email, mark-pai
 links, two-way sheet editing, weekend/business-day adjustment, and pushing occurrences to a
 shared Google Calendar (a cheap future way to give the spouse her own reminders). None require a
 schema migration to add later.
+
+---
+
+## What changed during implementation
+
+The plan above is the design as written up front. Five things came out differently; the
+architecture is unchanged.
+
+1. **Recurrence and plan termination became sealed types**, not an enum plus an interval
+   field. `Recurrence.SemiMonthly` carries its two anchor days and `PlanEnd` is either
+   `AfterPayments` or `OnOrBefore`, so "semi-monthly every 3 months" and "ends by count *and*
+   by date" cannot be constructed at all. Room flattens them into columns and reassembles on
+   read.
+
+2. **No Hilt.** The DI container is about thirty lines, and skipping the framework avoids an
+   annotation processor, its Gradle plugin, and version-alignment issues. Worker injection is
+   a small `WorkerFactory`.
+
+3. **No kotlinx.serialization.** The payload encoder lives in `:domain`, which puts the exact
+   bytes sent over the wire under unit test and drops a compiler plugin from the app. Only
+   writing is hand-rolled — responses are parsed with `org.json` on the Android side.
+
+4. **`DigestTiming` moved into `:domain`** so its daylight-saving behaviour could be tested.
+   Adding a flat 24 hours drifts the notification an hour later every spring and never
+   recovers.
+
+5. **Two cross-language contract tests were added**, which the plan did not anticipate. A
+   Kotlin test parses the `.gs` sources and fails when the column definitions drift; a node
+   test runs a Kotlin-generated fixture through the real script functions. Column drift is
+   otherwise completely silent — the sheet still fills in and the email just stops finding
+   anything due.
+
+The `:app` module is written but has not been compiled: this environment's network policy
+blocks `dl.google.com`, so neither the Android SDK nor any androidx artifact is reachable.
+Everything in `:domain` and `appsscript/` is tested and passing.
