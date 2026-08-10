@@ -1,0 +1,8 @@
+{
+  "name": "gs-bills-notifyer-appsscript",
+  "private": true,
+  "description": "Google Apps Script backing the GS-Bills-Notifyer sheet and daily digest email",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  }
+}
