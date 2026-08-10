@@ -90,13 +90,29 @@ jobs:
 
       # WEBAPP_URL and SHARED_SECRET are absent here, so they compile in as empty strings.
       # The app treats that as "sync not configured" and still builds and runs.
+      # Gradle failures here run to hundreds of lines of framework stack trace with the
+      # actual cause buried in the middle, so pull the useful lines out on failure.
       - name: Assemble debug
         working-directory: android
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          if ! ./gradlew :app:assembleDebug --console=plain 2>&1 | tee build.log; then
+            echo "::group::Key error lines"
+            grep -nE "^e: |^\* What went wrong|^> |Caused by:|^FAILURE" build.log | head -60
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - name: Run app unit tests
         working-directory: android
-        run: ./gradlew :app:testDebugUnitTest
+        run: |
+          set -o pipefail
+          if ! ./gradlew :app:testDebugUnitTest --console=plain 2>&1 | tee test.log; then
+            echo "::group::Key error lines"
+            grep -nE "^e: |^\* What went wrong|^> |FAILED|Caused by:" test.log | head -60
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         if: success()
