@@ -32,6 +32,8 @@ tasks.test {
     useJUnitPlatform()
     // Lets SheetSchemaContractTest find appsscript/Common.gs regardless of working directory.
     systemProperty("repoRoot", rootProject.projectDir.parentFile.absolutePath)
+    // Gradle -D flags land on the daemon JVM, not the test JVM, so forward this one.
+    systemProperty("updateFixture", System.getProperty("updateFixture") ?: "false")
     testLogging {
         events("passed", "failed", "skipped")
     }
