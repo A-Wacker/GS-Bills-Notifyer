@@ -70,6 +70,14 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+
+    testOptions {
+        unitTests {
+            // Robolectric needs the merged manifest and resources to stand up a real
+            // Application and inflate the notification channel.
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 // Lets Room's schema export land somewhere useful for future migrations.
@@ -102,17 +110,18 @@ dependencies {
     implementation(libs.datastore.preferences)
     implementation(libs.okhttp)
 
+    // Robolectric runs the Android framework on the JVM, so the Room queries and the
+    // notification path are exercised for real without an emulator in CI.
+    testImplementation(libs.junit4)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
     testImplementation(libs.kotlin.test)
-    testImplementation(libs.junit.jupiter)
-    testRuntimeOnly(libs.junit.platform.launcher)
     testImplementation(libs.coroutines.test)
+    testImplementation(libs.room.testing)
+    testImplementation(libs.work.testing)
 
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.work.testing)
-}
-
-tasks.withType<Test>().configureEach {
-    useJUnitPlatform()
 }
