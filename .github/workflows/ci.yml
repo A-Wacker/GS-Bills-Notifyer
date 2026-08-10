@@ -1,0 +1,124 @@
+name: CI
+
+# Pushes to a PR branch are covered by the pull_request event, so triggering on both
+# ran every commit twice and listed six checks on the PR instead of three.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Schedule maths, payoff, sheet mapping and payload encoding. Needs no Android SDK,
+  # which is the point of keeping :domain a plain Kotlin/JVM module.
+  domain:
+    name: Domain tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run domain tests
+        working-directory: android
+        run: ./gradlew :domain:test
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: domain-test-report
+          path: android/domain/build/reports/tests/test
+
+  # Digest selection, the sync merge, and the cross-language contract test that runs a
+  # Kotlin-generated fixture through the real Apps Script functions.
+  appsscript:
+    name: Apps Script tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run Apps Script tests
+        working-directory: appsscript
+        run: npm test
+
+  # The one thing that cannot be checked without the Android SDK.
+  app:
+    name: Build app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install SDK packages
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+
+      # settings.gradle.kts only includes :app when it can find an SDK, and reads
+      # ANDROID_HOME. Fail loudly rather than silently "passing" by skipping the module.
+      - name: Confirm the app module is in the build
+        working-directory: android
+        run: |
+          if ! ./gradlew projects > projects.txt 2>&1; then
+            echo "::error::Gradle configuration failed before the build could start."
+            cat projects.txt
+            exit 1
+          fi
+          cat projects.txt
+          grep -q "Project ':app'" projects.txt || {
+            echo "::error::The :app module was skipped — no Android SDK was detected."
+            exit 1
+          }
+
+      # WEBAPP_URL and SHARED_SECRET are absent here, so they compile in as empty strings.
+      # The app treats that as "sync not configured" and still builds and runs.
+      # Gradle failures here run to hundreds of lines of framework stack trace with the
+      # actual cause buried in the middle, so pull the useful lines out on failure.
+      - name: Assemble debug
+        working-directory: android
+        run: |
+          set -o pipefail
+          if ! ./gradlew :app:assembleDebug --console=plain 2>&1 | tee build.log; then
+            echo "::group::Key error lines"
+            grep -niE "^e: |error|AAPT|What went wrong|Caused by" build.log | head -60
+            echo "::endgroup::"
+            exit 1
+          fi
+
+      - name: Run app unit tests
+        working-directory: android
+        run: |
+          set -o pipefail
+          if ! ./gradlew :app:testDebugUnitTest --console=plain 2>&1 | tee test.log; then
+            echo "::group::Key error lines"
+            grep -niE "^e: |error|FAILED|What went wrong|Caused by" test.log | head -60
+            echo "::endgroup::"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
