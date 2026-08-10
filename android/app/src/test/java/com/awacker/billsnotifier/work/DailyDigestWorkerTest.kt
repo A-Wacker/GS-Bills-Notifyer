@@ -201,8 +201,10 @@ class DailyDigestWorkerTest {
         repository.savePlan(plan("car", "Car loan", today))
         runWorker()
 
-        val channel = shadowOf(context.getSystemService(NotificationManager::class.java))
-            .getNotificationChannel(DailyDigestWorker.CHANNEL_ID) as android.app.NotificationChannel
+        // Read the channel off the real manager: Robolectric implements it there, and the
+        // shadow's accessor is protected.
+        val channel = context.getSystemService(NotificationManager::class.java)
+            .getNotificationChannel(DailyDigestWorker.CHANNEL_ID)
         assertEquals(NotificationManager.IMPORTANCE_HIGH, channel.importance)
         assertEquals(DailyDigestWorker.CHANNEL_ID, postedNotifications().first().channelId)
     }
