@@ -31,6 +31,12 @@ class DailyDigestWorker(
     context: Context,
     parameters: WorkerParameters,
     private val repository: BillsRepository,
+    /**
+     * Arms tomorrow's run. Injected so a test can assert the daily chain continues —
+     * that self-rescheduling is the entire mechanism, and a silent break in it would
+     * look exactly like a working app right up until the notifications stopped.
+     */
+    private val rescheduleNext: (Context) -> Unit = DigestScheduler::scheduleNext,
 ) : CoroutineWorker(context, parameters) {
 
     override suspend fun doWork(): Result {
@@ -39,7 +45,7 @@ class DailyDigestWorker(
             repository.dueOn(today)
         } catch (error: Exception) {
             // Reschedule regardless — a bad day must not silently end the daily chain.
-            DigestScheduler.scheduleNext(applicationContext)
+            rescheduleNext(applicationContext)
             return Result.retry()
         }
 
@@ -49,7 +55,7 @@ class DailyDigestWorker(
         // Deliberately silent on days with nothing due; a daily "nothing due" notification
         // trains you to swipe it away without reading it.
 
-        DigestScheduler.scheduleNext(applicationContext)
+        rescheduleNext(applicationContext)
         return Result.success()
     }
 
