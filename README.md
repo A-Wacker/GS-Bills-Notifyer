@@ -64,7 +64,7 @@ there are no conflicts.
 
 ```bash
 cd android    && ./gradlew :domain:test          # 105 tests — schedule maths, payoff, mapping
-cd appsscript && npm test                        # 45 tests — digest selection, sync merge, contract
+cd appsscript && npm test                        # 46 tests — digest selection, sync merge, contract
 cd android    && ./gradlew :app:testDebugUnitTest # 25 tests — Room queries, digest notification
 cd android    && ./gradlew :app:assembleDebug
 ```
@@ -90,7 +90,9 @@ Two of those suites check each other rather than themselves:
   Script functions by the node suite, asserting the digest picks the right rows, skips paid
   ones, totals correctly, and stays idempotent across a sync round trip.
 
-To build the app itself, see [docs/SETUP.md](docs/SETUP.md).
+To set it up, see [docs/SETUP.md](docs/SETUP.md). The Google side needs a desktop browser
+once — the Sheets mobile app has no Extensions menu — but the app side can be done
+entirely from the phone by installing the APK that CI publishes.
 
 ## A note on which notification to trust
 
