@@ -135,3 +135,10 @@ test('escapeHtml neutralises markup', () => {
   assert.equal(gs.escapeHtml('<script>&"\''), '&lt;script&gt;&amp;&quot;&#39;');
   assert.equal(gs.escapeHtml(null), '');
 });
+
+test('generateSecret produces a long, unpredictable hex string', () => {
+  const secret = gs.generateSecret();
+  // Two UUIDs with the dashes removed: 256 bits of entropy, safe in a URL or a text field.
+  assert.match(secret, /^[0-9a-f]{64}$/);
+  assert.notEqual(secret, gs.generateSecret());
+});

@@ -32,6 +32,7 @@ function createGoogleStubs() {
           const iso = date.toISOString();
           return format === 'yyyy-MM-dd' ? iso.slice(0, 10) : iso.slice(0, 19);
         },
+        getUuid: () => require('node:crypto').randomUUID(),
       },
       MailApp: {
         sendEmail: (options) => sentEmails.push(options),
