@@ -1,8 +1,10 @@
 name: CI
 
+# Pushes to a PR branch are covered by the pull_request event, so triggering on both
+# ran every commit twice and listed six checks on the PR instead of three.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
