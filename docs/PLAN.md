@@ -401,5 +401,10 @@ green:
 3. A notification icon tinted with `?attr/colorControlNormal`, an attribute only
    AppCompat and Material define — neither of which this app uses.
 
-All three were configuration rather than logic. CI now produces a debug APK on every
-push.
+All three were configuration rather than logic. CI now produces a debug APK on every push.
+
+Robolectric tests were then added for the Room layer and the digest worker, covering the
+gap between "it compiles" and "the notification works". Both defects they turned up were
+in the tests themselves, not the app. What remains unverified is genuine device behaviour:
+whether the OS actually delivers the scheduled work in the morning, and whether sync
+round-trips against a live sheet.
