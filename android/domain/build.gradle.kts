@@ -30,6 +30,8 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // Lets SheetSchemaContractTest find appsscript/Common.gs regardless of working directory.
+    systemProperty("repoRoot", rootProject.projectDir.parentFile.absolutePath)
     testLogging {
         events("passed", "failed", "skipped")
     }
