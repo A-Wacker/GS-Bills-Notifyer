@@ -65,10 +65,14 @@ there are no conflicts.
 ```bash
 cd android    && ./gradlew :domain:test   # 105 tests — schedule maths, payoff, mapping
 cd appsscript && npm test                 # 45 tests — digest selection, sync merge, contract
+cd android    && ./gradlew :app:assembleDebug   # needs the Android SDK
 ```
 
-Neither needs the Android SDK. `:app` is only included in the Gradle build when an SDK is
-present, so the domain tests run in CI and on any machine.
+The first two need no Android SDK. `:app` is only included in the Gradle build when one is
+present, so the domain tests run anywhere — but note that where an SDK *is* present, `:app`
+is configured even for a `:domain:test` run, so a broken app build script will fail it.
+
+[CI](.github/workflows/ci.yml) runs all three on every push and uploads a debug APK.
 
 Two of those suites check each other rather than themselves:
 
