@@ -98,7 +98,7 @@ jobs:
           set -o pipefail
           if ! ./gradlew :app:assembleDebug --console=plain 2>&1 | tee build.log; then
             echo "::group::Key error lines"
-            grep -nE "^e: |^\* What went wrong|^> |Caused by:|^FAILURE" build.log | head -60
+            grep -niE "^e: |error|AAPT|What went wrong|Caused by" build.log | head -60
             echo "::endgroup::"
             exit 1
           fi
@@ -109,7 +109,7 @@ jobs:
           set -o pipefail
           if ! ./gradlew :app:testDebugUnitTest --console=plain 2>&1 | tee test.log; then
             echo "::group::Key error lines"
-            grep -nE "^e: |^\* What went wrong|^> |FAILED|Caused by:" test.log | head -60
+            grep -niE "^e: |error|FAILED|What went wrong|Caused by" test.log | head -60
             echo "::endgroup::"
             exit 1
           fi
