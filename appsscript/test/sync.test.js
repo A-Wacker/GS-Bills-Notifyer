@@ -142,3 +142,44 @@ test('generateSecret produces a long, unpredictable hex string', () => {
   assert.match(secret, /^[0-9a-f]{64}$/);
   assert.notEqual(secret, gs.generateSecret());
 });
+
+/**
+ * The regression that stranded the mirror: adding the seven machine-readable plan columns
+ * changed BILL_COLUMNS, but a sheet that already had rows kept its old 15-column header
+ * forever, so the new values landed in unnamed columns and readTable dropped them.
+ */
+test('headerRepairPlan rewrites a header left behind by an older schema', () => {
+  const old = gs.BILL_COLUMNS.slice(0, 15);
+  const plan = gs.headerRepairPlan(old, gs.BILL_COLUMNS);
+  assert.equal(plan.needsWrite, true);
+  assert.equal(plan.staleColumnCount, 0);
+});
+
+test('headerRepairPlan leaves an already-current header alone', () => {
+  const plan = gs.headerRepairPlan(gs.BILL_COLUMNS.slice(), gs.BILL_COLUMNS);
+  assert.deepEqual(plan, { needsWrite: false, staleColumnCount: 0 });
+});
+
+test('headerRepairPlan treats an empty tab as needing a header', () => {
+  assert.equal(gs.headerRepairPlan([], gs.OCCURRENCE_COLUMNS).needsWrite, true);
+  assert.equal(gs.headerRepairPlan(null, gs.OCCURRENCE_COLUMNS).needsWrite, true);
+});
+
+test('headerRepairPlan clears columns dropped from the schema', () => {
+  const plan = gs.headerRepairPlan(gs.BILL_COLUMNS.concat(['retired_a', 'retired_b']), gs.BILL_COLUMNS);
+  assert.equal(plan.needsWrite, false, 'the surviving columns already match, so no rewrite');
+  assert.equal(plan.staleColumnCount, 2);
+});
+
+test('headerRepairPlan repairs a header whose columns were reordered by hand', () => {
+  const shuffled = gs.BILL_COLUMNS.slice();
+  const first = shuffled[0];
+  shuffled[0] = shuffled[1];
+  shuffled[1] = first;
+  assert.equal(gs.headerRepairPlan(shuffled, gs.BILL_COLUMNS).needsWrite, true);
+});
+
+test('headerRepairPlan tolerates stray whitespace in a hand-edited header', () => {
+  const padded = gs.BILL_COLUMNS.map((name) => ' ' + name + ' ');
+  assert.equal(gs.headerRepairPlan(padded, gs.BILL_COLUMNS).needsWrite, false);
+});

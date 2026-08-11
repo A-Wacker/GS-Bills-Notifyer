@@ -151,6 +151,29 @@ function parseRecipients(raw) {
     });
 }
 
+/**
+ * Decides how to bring an existing header row up to date with the current schema.
+ *
+ * A tab written by an older version of this script has an older, shorter header row. The
+ * data rows underneath are always rewritten at the current width, so a stale header does
+ * not merely look wrong — readTable keys every row off it, and columns past the end of the
+ * header collapse into a single empty-string key. That is what silently strands a mirror
+ * device: the plan definition is sitting in the sheet, but arrives unnamed.
+ *
+ * Pure so the migration decision is testable; the writes live in ensureHeader.
+ */
+function headerRepairPlan(currentHeader, columns) {
+  var current = currentHeader || [];
+  var matches = current.length >= columns.length && columns.every(function (name, index) {
+    return String(current[index] === undefined ? '' : current[index]).trim() === name;
+  });
+  return {
+    needsWrite: !matches,
+    // A column dropped from the schema would otherwise leave an orphan header behind.
+    staleColumnCount: Math.max(0, current.length - columns.length),
+  };
+}
+
 /** Escapes text for inclusion in the HTML email body. */
 function escapeHtml(value) {
   return String(value === null || value === undefined ? '' : value)
@@ -188,11 +211,39 @@ function getSheetOrCreate(name, columns) {
   if (!sheet) {
     sheet = spreadsheet.insertSheet(name);
   }
-  if (columns && sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, columns.length).setValues([columns]).setFontWeight('bold');
-    sheet.setFrozenRows(1);
-  }
+  if (columns) ensureHeader(sheet, columns);
   return sheet;
+}
+
+/**
+ * Makes row 1 match the current schema, whether the tab is new or was written by an
+ * earlier version of this script.
+ *
+ * Adding a column to BILL_COLUMNS used to be a silent no-op on any sheet that already had
+ * data, because the header was only ever written to an empty tab. Repairing it on every
+ * access means a schema change takes effect on the next sync with nothing to do by hand.
+ */
+function ensureHeader(sheet, columns) {
+  var maxColumns = sheet.getMaxColumns();
+  if (maxColumns < columns.length) {
+    sheet.insertColumnsAfter(maxColumns, columns.length - maxColumns);
+  }
+
+  var lastColumn = sheet.getLastColumn();
+  var current = sheet.getLastRow() === 0 || lastColumn === 0
+    ? []
+    : sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
+
+  var plan = headerRepairPlan(current, columns);
+  if (!plan.needsWrite && plan.staleColumnCount === 0) return;
+
+  if (plan.needsWrite) {
+    sheet.getRange(1, 1, 1, columns.length).setValues([columns]).setFontWeight('bold');
+  }
+  if (plan.staleColumnCount > 0) {
+    sheet.getRange(1, columns.length + 1, 1, plan.staleColumnCount).clearContent();
+  }
+  sheet.setFrozenRows(1);
 }
 
 /**
@@ -215,10 +266,9 @@ function readTable(sheet) {
  * owns (see restoreScriptOwnedColumns in Sync.gs).
  */
 function writeTable(sheet, columns, objects, dateColumns, moneyColumns) {
-  if (sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, columns.length).setValues([columns]).setFontWeight('bold');
-    sheet.setFrozenRows(1);
-  }
+  // Before measuring anything: this may widen the sheet, and the clear below must cover
+  // the full width or stale cells survive under the new columns.
+  ensureHeader(sheet, columns);
 
   var existingRows = sheet.getLastRow() - 1;
   if (existingRows > 0) {
