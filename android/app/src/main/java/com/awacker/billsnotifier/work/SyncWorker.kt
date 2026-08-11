@@ -7,17 +7,19 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.awacker.billsnotifier.data.BillsRepository
 import com.awacker.billsnotifier.data.prefs.SettingsStore
+import com.awacker.billsnotifier.data.remote.PullResult
 import com.awacker.billsnotifier.data.remote.SheetSyncClient
 import com.awacker.billsnotifier.data.remote.SyncResult
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * Mirrors the local database to the Google Sheet.
+ * Keeps this device and the Google Sheet in step — in whichever direction this install runs.
  *
- * Sends a complete snapshot rather than a diff — the dataset is small and the phone is the
- * only writer, so wholesale replacement cannot drift. The script preserves the couple of
- * columns it owns.
+ * The owning phone uploads a complete snapshot rather than a diff: the dataset is small and
+ * there is only ever one writer, so wholesale replacement cannot drift. A read-only mirror
+ * downloads instead, which is what makes a second phone safe to install — two uploading
+ * devices would overwrite each other's plans on every sync.
  *
  * Nothing on the device depends on this succeeding; it is what keeps the email digest
  * accurate. A failure retries with backoff and surfaces on the settings screen.
@@ -37,29 +39,28 @@ class SyncWorker(
             return Result.success()
         }
 
+        return if (current.isMirrorDevice) {
+            download(current.webAppUrl, current.sharedSecret)
+        } else {
+            upload(current.webAppUrl, current.sharedSecret, current.emailRecipients)
+        }
+    }
+
+    private suspend fun upload(url: String, secret: String, recipients: String): Result {
         val result = client.sync(
-            webAppUrl = current.webAppUrl,
-            secret = current.sharedSecret,
+            webAppUrl = url,
+            secret = secret,
             plans = repository.snapshotForSync(),
             today = repository.today(),
-            updatedAt = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+            updatedAt = nowStamp(),
             settings = buildMap {
-                if (current.emailRecipients.isNotBlank()) {
-                    put("email_recipients", current.emailRecipients)
-                }
+                if (recipients.isNotBlank()) put("email_recipients", recipients)
             },
         )
 
         return when (result) {
-            // Not produced by sync, but the type allows it; treat it as a clean run.
-            is SyncResult.Reported -> Result.success()
-
             is SyncResult.Success -> {
-                settings.markSynced(
-                    result.serverTime.ifBlank {
-                        LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-                    },
-                )
+                settings.markSynced(result.serverTime.ifBlank { nowStamp() })
                 Result.success()
             }
 
@@ -74,8 +75,29 @@ class SyncWorker(
                 settings.markSyncFailed(result.message)
                 Result.retry()
             }
+
+            // Not produced by sync, but the type allows it; treat it as a clean run.
+            is SyncResult.Reported -> Result.success()
         }
     }
+
+    /** Replaces local data with the sheet's copy. Writes nothing back. */
+    private suspend fun download(url: String, secret: String): Result =
+        when (val result = client.pull(url, secret)) {
+            is PullResult.Success -> {
+                repository.replaceAllFromMirror(result.plans)
+                settings.markSynced(result.serverTime.ifBlank { nowStamp() })
+                Result.success()
+            }
+
+            is PullResult.Failed -> {
+                settings.markSyncFailed(result.message)
+                if (result.retryable) Result.retry() else Result.failure()
+            }
+        }
+
+    private fun nowStamp(): String =
+        LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 }
 
 /**

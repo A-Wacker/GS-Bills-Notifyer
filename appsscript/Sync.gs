@@ -37,6 +37,10 @@ function doPost(e) {
       // idempotency check, and reports what happened rather than just succeeding.
       case 'digest':
         return jsonResponse(Object.assign({ ok: true }, sendDailyDigest()));
+      // Read-only mirror devices download the sheet instead of uploading to it, so the
+      // single-writer rule that makes sync safe stays intact.
+      case 'pull':
+        return jsonResponse(handlePull());
       default:
         return jsonResponse({ ok: false, error: 'unknown action: ' + body.action });
     }
@@ -147,6 +151,35 @@ function restoreScriptOwnedColumns(incomingRows, preserved) {
     });
     return merged;
   });
+}
+
+/**
+ * Returns the sheet's contents for a mirror device.
+ *
+ * Read-only on purpose: it touches nothing, so a mirror can never overwrite the phone that
+ * owns the data. Display values are used throughout, so dates arrive as the literal strings
+ * that were written rather than as timezone-shifted Date objects.
+ */
+function handlePull() {
+  var bills = readTable(getSheetOrCreate(SHEET_BILLS, BILL_COLUMNS)).map(stripRowIndex);
+  var occurrences = readTable(getSheetOrCreate(SHEET_OCCURRENCES, OCCURRENCE_COLUMNS))
+    .map(stripRowIndex);
+
+  return {
+    ok: true,
+    bills: bills,
+    occurrences: occurrences,
+    serverTime: nowIsoString(),
+  };
+}
+
+/** Drops the sheet bookkeeping field so it doesn't travel to the device. */
+function stripRowIndex(row) {
+  var copy = {};
+  Object.keys(row).forEach(function (key) {
+    if (key !== '_rowIndex') copy[key] = row[key];
+  });
+  return copy;
 }
 
 function jsonResponse(object) {

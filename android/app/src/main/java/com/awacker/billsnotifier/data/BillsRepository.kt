@@ -12,6 +12,7 @@ import com.awacker.billsnotifier.domain.schedule.PlanMath
 import com.awacker.billsnotifier.domain.schedule.PlanProgress
 import com.awacker.billsnotifier.domain.schedule.ScheduleGenerator
 import com.awacker.billsnotifier.domain.sync.PlanSnapshot
+import com.awacker.billsnotifier.domain.sync.SheetParser
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Clock
@@ -109,6 +110,29 @@ class BillsRepository(
             bill = row.bill.toDomain(),
             occurrences = row.occurrences.sortedBy { it.sequence }.map { it.toDomain() },
             isArchived = row.bill.archivedAt != null,
+        )
+    }
+
+    /**
+     * Replaces everything with a copy downloaded from the sheet, for a mirror device.
+     *
+     * Deliberately does not mark anything dirty: a mirror never uploads, and flagging it
+     * would queue a push that overwrites the sheet with the copy it just read.
+     */
+    suspend fun replaceAllFromMirror(plans: List<SheetParser.MirroredPlan>) {
+        val now = Instant.now(clock)
+        dao.replaceAll(
+            bills = plans.map { plan ->
+                BillEntity.fromDomain(
+                    bill = plan.bill,
+                    createdAt = now,
+                    updatedAt = now,
+                    archivedAt = now.takeIf { plan.isArchived },
+                )
+            },
+            occurrences = plans.flatMap { plan ->
+                plan.occurrences.map { OccurrenceEntity.fromDomain(it, now) }
+            },
         )
     }
 

@@ -2,6 +2,7 @@ package com.awacker.billsnotifier.data.remote
 
 import com.awacker.billsnotifier.domain.sync.DigestOutcome
 import com.awacker.billsnotifier.domain.sync.PlanSnapshot
+import com.awacker.billsnotifier.domain.sync.SheetParser
 import com.awacker.billsnotifier.domain.sync.SyncPayload
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -9,6 +10,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Duration
 import java.time.LocalDate
@@ -23,8 +25,14 @@ sealed interface SyncResult {
     data class Failed(val message: String) : SyncResult
 }
 
+/** A download for a read-only mirror device. */
+sealed interface PullResult {
+    data class Success(val plans: List<SheetParser.MirroredPlan>, val serverTime: String) : PullResult
+    data class Failed(val message: String, val retryable: Boolean) : PullResult
+}
+
 /**
- * Posts snapshots to the Apps Script web app.
+ * Talks to the Apps Script web app.
  *
  * A note on redirects: Apps Script answers a web app POST with a 302 to
  * script.googleusercontent.com. OkHttp follows redirects by default, but on a 302 it
@@ -37,7 +45,7 @@ class SheetSyncClient(
 ) {
 
     suspend fun ping(webAppUrl: String, secret: String): SyncResult =
-        post(webAppUrl, SyncPayload.ping(secret)) { json ->
+        post(webAppUrl, SyncPayload.ping(secret)).toSyncResult { json ->
             SyncResult.Success(
                 billCount = 0,
                 occurrenceCount = 0,
@@ -53,7 +61,7 @@ class SheetSyncClient(
      * duplicate.
      */
     suspend fun runDigest(webAppUrl: String, secret: String): SyncResult =
-        post(webAppUrl, SyncPayload.digest(secret)) { json ->
+        post(webAppUrl, SyncPayload.digest(secret)).toSyncResult { json ->
             SyncResult.Reported(
                 DigestOutcome.describe(
                     reason = json.optString("reason", "unknown"),
@@ -79,7 +87,7 @@ class SheetSyncClient(
             updatedAt = updatedAt,
             settings = settings,
         )
-        return post(webAppUrl, body) { json ->
+        return post(webAppUrl, body).toSyncResult { json ->
             SyncResult.Success(
                 billCount = json.optInt("billCount"),
                 occurrenceCount = json.optInt("occurrenceCount"),
@@ -88,12 +96,49 @@ class SheetSyncClient(
         }
     }
 
-    private suspend fun post(
-        url: String,
-        body: String,
-        onSuccess: (JSONObject) -> SyncResult,
-    ): SyncResult = withContext(Dispatchers.IO) {
-        if (url.isBlank()) return@withContext SyncResult.Rejected("No web app URL configured")
+    /**
+     * Downloads the sheet for a mirror device. Writes nothing, so a mirror can never
+     * overwrite the phone that owns the data.
+     */
+    suspend fun pull(webAppUrl: String, secret: String): PullResult =
+        when (val outcome = post(webAppUrl, SyncPayload.pull(secret))) {
+            is HttpOutcome.Ok -> PullResult.Success(
+                plans = SheetParser.plansFrom(
+                    billRows = outcome.json.optJSONArray("bills").toRowList(),
+                    occurrenceRows = outcome.json.optJSONArray("occurrences").toRowList(),
+                ),
+                serverTime = outcome.json.optString("serverTime"),
+            )
+
+            is HttpOutcome.Rejected -> PullResult.Failed(outcome.message, retryable = false)
+            is HttpOutcome.Failed -> PullResult.Failed(outcome.message, retryable = true)
+        }
+
+    private sealed interface HttpOutcome {
+        data class Ok(val json: JSONObject) : HttpOutcome
+        data class Rejected(val message: String) : HttpOutcome
+        data class Failed(val message: String) : HttpOutcome
+    }
+
+    private inline fun HttpOutcome.toSyncResult(onOk: (JSONObject) -> SyncResult): SyncResult =
+        when (this) {
+            is HttpOutcome.Ok -> onOk(json)
+            is HttpOutcome.Rejected -> SyncResult.Rejected(message)
+            is HttpOutcome.Failed -> SyncResult.Failed(message)
+        }
+
+    /** Every value arrives as a display string, which is what SheetParser expects. */
+    private fun JSONArray?.toRowList(): List<Map<String, String>> {
+        if (this == null) return emptyList()
+        return (0 until length()).mapNotNull { index ->
+            optJSONObject(index)?.let { row ->
+                row.keys().asSequence().associateWith { key -> row.optString(key, "") }
+            }
+        }
+    }
+
+    private suspend fun post(url: String, body: String): HttpOutcome = withContext(Dispatchers.IO) {
+        if (url.isBlank()) return@withContext HttpOutcome.Rejected("No web app URL configured")
 
         val request = Request.Builder()
             .url(url)
@@ -104,7 +149,7 @@ class SheetSyncClient(
             client.newCall(request).execute().use { response ->
                 val text = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    return@withContext SyncResult.Failed("HTTP ${response.code}")
+                    return@withContext HttpOutcome.Failed("HTTP ${response.code}")
                 }
 
                 val json = try {
@@ -112,20 +157,20 @@ class SheetSyncClient(
                 } catch (error: Exception) {
                     // Apps Script serves an HTML error page when the deployment is
                     // misconfigured, so say something more useful than "parse error".
-                    return@withContext SyncResult.Rejected(
+                    return@withContext HttpOutcome.Rejected(
                         "Unexpected response — check the deployment is set to " +
                             "\"Anyone with the link\" and the URL ends in /exec",
                     )
                 }
 
                 if (json.optBoolean("ok")) {
-                    onSuccess(json)
+                    HttpOutcome.Ok(json)
                 } else {
-                    SyncResult.Rejected(json.optString("error", "Rejected by the script"))
+                    HttpOutcome.Rejected(json.optString("error", "Rejected by the script"))
                 }
             }
         } catch (error: Exception) {
-            SyncResult.Failed(error.message ?: error.javaClass.simpleName)
+            HttpOutcome.Failed(error.message ?: error.javaClass.simpleName)
         }
     }
 

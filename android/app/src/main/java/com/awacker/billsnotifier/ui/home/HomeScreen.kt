@@ -54,6 +54,7 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
 ) {
     val plans by viewModel.plans.collectAsStateWithLifecycle()
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
     val today = viewModel.today()
 
     val dueToday = plans.flatMap { plan ->
@@ -76,13 +77,17 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddPlan) {
-                Icon(Icons.Default.Add, contentDescription = "Add a plan")
+            // A mirror cannot create plans, so offering the button would only ever produce
+            // a refusal.
+            if (!settings.isMirrorDevice) {
+                FloatingActionButton(onClick = onAddPlan) {
+                    Icon(Icons.Default.Add, contentDescription = "Add a plan")
+                }
             }
         },
     ) { padding ->
         if (plans.isEmpty()) {
-            EmptyState(Modifier.padding(padding))
+            EmptyState(isMirror = settings.isMirrorDevice, modifier = Modifier.padding(padding))
             return@Scaffold
         }
 
@@ -222,7 +227,7 @@ private fun PlanCard(plan: PlanWithProgress, today: LocalDate, onClick: () -> Un
 }
 
 @Composable
-private fun EmptyState(modifier: Modifier = Modifier) {
+private fun EmptyState(isMirror: Boolean, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -233,7 +238,12 @@ private fun EmptyState(modifier: Modifier = Modifier) {
         Text("No payment plans yet", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.padding(4.dp))
         Text(
-            "Add a plan and you'll get a notification each morning something is due.",
+            if (isMirror) {
+                "Nothing downloaded yet. Check the connection in Settings, then tap " +
+                    "Download now."
+            } else {
+                "Add a plan and you'll get a notification each morning something is due."
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
