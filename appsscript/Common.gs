@@ -32,6 +32,16 @@ var BILL_COLUMNS = [
   'notes',
   'active',
   'updated_at',
+  // Machine-readable plan definition. Everything above is derived or decorative; these are
+  // what let a plan be rebuilt rather than merely displayed — needed by a read-only mirror
+  // device and by anyone restoring from this sheet as a backup.
+  'recurrence_type',
+  'recurrence_interval',
+  'semi_monthly_days',
+  'end_mode',
+  'end_on',
+  'final_amount',
+  'notifications_enabled',
 ];
 
 var OCCURRENCE_COLUMNS = [
@@ -58,11 +68,11 @@ var OCCURRENCE_COLUMNS = [
  * script's timezone — which is how you get an off-by-one-day bug that only shows up for
  * people west of UTC. Everything here stays a string and is compared as a string.
  */
-var BILL_DATE_COLUMNS = ['first_due', 'end_date', 'next_due'];
+var BILL_DATE_COLUMNS = ['first_due', 'end_date', 'next_due', 'end_on'];
 var OCCURRENCE_DATE_COLUMNS = ['due_date', 'paid_on', 'notified_on'];
 
 /** Columns written as real numbers so the sheet can sum them and format as currency. */
-var BILL_MONEY_COLUMNS = ['installment_amount', 'remaining_amount'];
+var BILL_MONEY_COLUMNS = ['installment_amount', 'remaining_amount', 'final_amount'];
 var OCCURRENCE_MONEY_COLUMNS = ['amount'];
 
 var CURRENCY_FORMAT = '$#,##0.00';

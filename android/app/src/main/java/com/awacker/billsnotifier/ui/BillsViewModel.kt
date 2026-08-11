@@ -45,7 +45,17 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun newPlanId(): String = repository.newPlanId()
 
+    private suspend fun refuseIfMirror(): Boolean {
+        if (!settingsStore.current().isMirrorDevice) return false
+        _toast.value = Toast(
+            "This device is a read-only mirror — edit on the phone that owns the plans",
+            isError = true,
+        )
+        return true
+    }
+
     fun savePlan(bill: Bill, onSaved: () -> Unit = {}) = viewModelScope.launch {
+        if (refuseIfMirror()) return@launch
         try {
             repository.savePlan(bill)
             requestSync()
@@ -58,6 +68,7 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setPaid(occurrence: Occurrence, paid: Boolean) = viewModelScope.launch {
+        if (refuseIfMirror()) return@launch
         if (paid) {
             repository.markPaid(occurrence.id, repository.today(), occurrence.amountCents)
         } else {
@@ -67,6 +78,7 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun archivePlan(billId: String) = viewModelScope.launch {
+        if (refuseIfMirror()) return@launch
         repository.archivePlan(billId)
         requestSync()
     }
@@ -105,6 +117,23 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun requestSync() = DigestScheduler.requestSync(getApplication())
+
+    /**
+     * Switches this install between owning the data and mirroring it.
+     *
+     * Turning it on immediately downloads, which replaces everything held locally — the
+     * sheet becomes the source of truth for this device. The settings screen confirms
+     * before calling this.
+     */
+    fun setMirrorDevice(isMirror: Boolean) = viewModelScope.launch {
+        settingsStore.setMirrorDevice(isMirror)
+        _toast.value = if (isMirror) {
+            requestSync()
+            Toast("Downloading from the sheet — this device is now read-only")
+        } else {
+            Toast("This device now owns the data and will upload to the sheet")
+        }
+    }
 
     /** Device-only: runs the on-device digest worker. Sends no email. */
     fun testNotification() {

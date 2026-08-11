@@ -51,6 +51,7 @@ fun BillDetailScreen(
     onEdit: (String) -> Unit,
 ) {
     val plan by viewModel.observePlan(billId).collectAsStateWithLifecycle(initialValue = null)
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
     val today = viewModel.today()
     val current = plan
 
@@ -64,14 +65,18 @@ fun BillDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { onEdit(billId) }) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit")
-                    }
-                    IconButton(onClick = {
-                        viewModel.archivePlan(billId)
-                        onBack()
-                    }) {
-                        Icon(Icons.Default.Archive, contentDescription = "Archive")
+                    // Read-only on a mirror: its copy is replaced by the next download, so
+                    // an edit made here would be silently discarded.
+                    if (!settings.isMirrorDevice) {
+                        IconButton(onClick = { onEdit(billId) }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit")
+                        }
+                        IconButton(onClick = {
+                            viewModel.archivePlan(billId)
+                            onBack()
+                        }) {
+                            Icon(Icons.Default.Archive, contentDescription = "Archive")
+                        }
                     }
                 },
             )
@@ -139,6 +144,7 @@ fun BillDetailScreen(
                 OccurrenceRow(
                     occurrence = occurrence,
                     today = today,
+                    canEdit = !settings.isMirrorDevice,
                     onTogglePaid = { viewModel.setPaid(occurrence, it) },
                 )
                 HorizontalDivider()
@@ -163,6 +169,7 @@ private fun StatRow(label: String, value: String) {
 private fun OccurrenceRow(
     occurrence: Occurrence,
     today: LocalDate,
+    canEdit: Boolean,
     onTogglePaid: (Boolean) -> Unit,
 ) {
     val status = occurrence.statusOn(today)
@@ -172,7 +179,10 @@ private fun OccurrenceRow(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Checkbox(checked = occurrence.isPaid, onCheckedChange = onTogglePaid)
+        Checkbox(
+            checked = occurrence.isPaid,
+            onCheckedChange = onTogglePaid.takeIf { canEdit },
+        )
         Column(Modifier.weight(1f)) {
             Text(
                 "#${occurrence.sequence} · ${occurrence.dueDate.format(DATE_FORMAT)}",

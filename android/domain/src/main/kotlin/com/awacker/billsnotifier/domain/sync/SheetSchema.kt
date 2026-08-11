@@ -2,6 +2,7 @@ package com.awacker.billsnotifier.domain.sync
 
 import com.awacker.billsnotifier.domain.model.Bill
 import com.awacker.billsnotifier.domain.model.Occurrence
+import com.awacker.billsnotifier.domain.model.PlanEnd
 import com.awacker.billsnotifier.domain.model.Recurrence
 import com.awacker.billsnotifier.domain.schedule.PlanMath
 import java.math.BigDecimal
@@ -13,6 +14,12 @@ import java.math.BigDecimal
  * `appsscript/Common.gs`. A drift test in SheetSchemaContractTest parses the .gs file and
  * fails if they diverge, because a silently renamed column would produce a sheet that
  * looks fine and a digest email that never finds anything due.
+ *
+ * The layout serves two audiences at once. The leading columns are for a human reading the
+ * sheet — a plain-English schedule, progress, a payoff date. The trailing `machine_*`-ish
+ * columns carry the fields needed to rebuild a plan exactly: without them the sheet cannot
+ * reconstruct a [Recurrence], which is what a read-only mirror device and any restore-from-
+ * backup both depend on.
  */
 object SheetSchema {
 
@@ -32,6 +39,15 @@ object SheetSchema {
         "notes",
         "active",
         "updated_at",
+        // Machine-readable plan definition. Everything above is derived or decorative;
+        // these are what let a plan be rebuilt rather than merely displayed.
+        "recurrence_type",
+        "recurrence_interval",
+        "semi_monthly_days",
+        "end_mode",
+        "end_on",
+        "final_amount",
+        "notifications_enabled",
     )
 
     val OCCURRENCE_COLUMNS: List<String> = listOf(
@@ -53,6 +69,13 @@ object SheetSchema {
      * own values on top of the snapshot, so the phone can never clobber them.
      */
     val SCRIPT_OWNED_COLUMNS: List<String> = listOf("notified_on")
+
+    const val RECURRENCE_WEEKLY = "WEEKLY"
+    const val RECURRENCE_MONTHLY = "MONTHLY"
+    const val RECURRENCE_SEMI_MONTHLY = "SEMI_MONTHLY"
+    const val RECURRENCE_YEARLY = "YEARLY"
+    const val END_BY_COUNT = "BY_COUNT"
+    const val END_BY_DATE = "BY_DATE"
 }
 
 /**
@@ -137,6 +160,23 @@ object SheetMapper {
             "notes" to SheetValue.Text(bill.notes.orEmpty()),
             "active" to SheetValue.Flag(!isArchived && !progress.isPaidOff),
             "updated_at" to SheetValue.Text(updatedAt),
+
+            "recurrence_type" to SheetValue.Text(bill.recurrence.typeName()),
+            "recurrence_interval" to SheetValue.Number(BigDecimal(bill.recurrence.interval())),
+            "semi_monthly_days" to SheetValue.Text(bill.recurrence.semiMonthlyDays()),
+            "end_mode" to SheetValue.Text(
+                when (bill.end) {
+                    is PlanEnd.AfterPayments -> SheetSchema.END_BY_COUNT
+                    is PlanEnd.OnOrBefore -> SheetSchema.END_BY_DATE
+                },
+            ),
+            // The user-chosen end date, distinct from end_date above, which is where the
+            // generated schedule happened to land.
+            "end_on" to SheetValue.Text(
+                (bill.end as? PlanEnd.OnOrBefore)?.date?.toString().orEmpty(),
+            ),
+            "final_amount" to (bill.finalAmountCents?.let(::money) ?: SheetValue.Text("")),
+            "notifications_enabled" to SheetValue.Flag(bill.notificationsEnabled),
         )
     }
 
@@ -164,3 +204,20 @@ object SheetMapper {
     private fun money(cents: Long): SheetValue.Number =
         SheetValue.Number(BigDecimal.valueOf(cents, 2))
 }
+
+internal fun Recurrence.typeName(): String = when (this) {
+    is Recurrence.Weekly -> SheetSchema.RECURRENCE_WEEKLY
+    is Recurrence.Monthly -> SheetSchema.RECURRENCE_MONTHLY
+    is Recurrence.SemiMonthly -> SheetSchema.RECURRENCE_SEMI_MONTHLY
+    is Recurrence.Yearly -> SheetSchema.RECURRENCE_YEARLY
+}
+
+internal fun Recurrence.interval(): Int = when (this) {
+    is Recurrence.Weekly -> everyNWeeks
+    is Recurrence.Monthly -> everyNMonths
+    is Recurrence.Yearly -> everyNYears
+    is Recurrence.SemiMonthly -> 1
+}
+
+internal fun Recurrence.semiMonthlyDays(): String =
+    (this as? Recurrence.SemiMonthly)?.let { "${it.firstDay},${it.secondDay}" }.orEmpty()

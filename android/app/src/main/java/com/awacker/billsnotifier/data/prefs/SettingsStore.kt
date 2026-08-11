@@ -22,6 +22,14 @@ data class AppSettings(
     val webAppUrl: String = "",
     val sharedSecret: String = "",
     val emailRecipients: String = "",
+    /**
+     * This install downloads from the sheet instead of uploading to it.
+     *
+     * Sync replaces the sheet wholesale, so two uploading devices would overwrite each
+     * other. A mirror reads only, which keeps exactly one writer and makes a second phone
+     * safe to install.
+     */
+    val isMirrorDevice: Boolean = false,
     /** Local changes are waiting to reach the sheet. */
     val isDirty: Boolean = false,
     val lastSyncAt: String = "",
@@ -55,6 +63,12 @@ class SettingsStore(private val context: Context) {
         it[IS_DIRTY] = true
     }
 
+    suspend fun setMirrorDevice(isMirror: Boolean) = context.dataStore.edit {
+        it[IS_MIRROR] = isMirror
+        // A mirror never uploads, so any pending local changes are moot.
+        if (isMirror) it[IS_DIRTY] = false
+    }
+
     suspend fun markDirty() = context.dataStore.edit { it[IS_DIRTY] = true }
 
     suspend fun markSynced(at: String) = context.dataStore.edit {
@@ -75,6 +89,7 @@ class SettingsStore(private val context: Context) {
         webAppUrl = this[WEBAPP_URL] ?: BuildConfig.WEBAPP_URL,
         sharedSecret = this[SHARED_SECRET] ?: BuildConfig.SHARED_SECRET,
         emailRecipients = this[EMAIL_RECIPIENTS] ?: "",
+        isMirrorDevice = this[IS_MIRROR] ?: false,
         isDirty = this[IS_DIRTY] ?: false,
         lastSyncAt = this[LAST_SYNC_AT] ?: "",
         lastSyncError = this[LAST_SYNC_ERROR] ?: "",
@@ -86,6 +101,7 @@ class SettingsStore(private val context: Context) {
         val WEBAPP_URL = stringPreferencesKey("webapp_url")
         val SHARED_SECRET = stringPreferencesKey("shared_secret")
         val EMAIL_RECIPIENTS = stringPreferencesKey("email_recipients")
+        val IS_MIRROR = booleanPreferencesKey("is_mirror_device")
         val IS_DIRTY = booleanPreferencesKey("is_dirty")
         val LAST_SYNC_AT = stringPreferencesKey("last_sync_at")
         val LAST_SYNC_ERROR = stringPreferencesKey("last_sync_error")

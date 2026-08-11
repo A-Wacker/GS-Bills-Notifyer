@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,7 +24,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -54,6 +58,7 @@ fun SettingsScreen(
     var url by remember { mutableStateOf("") }
     var secret by remember { mutableStateOf("") }
     var recipients by remember { mutableStateOf("") }
+    var confirmMirror by remember { mutableStateOf(false) }
 
     // Seed the fields once settings have loaded from DataStore.
     LaunchedEffect(settings) {
@@ -62,6 +67,16 @@ fun SettingsScreen(
         if (url.isEmpty()) url = settings.webAppUrl
         if (secret.isEmpty()) secret = settings.sharedSecret
         if (recipients.isEmpty()) recipients = settings.emailRecipients
+    }
+
+    if (confirmMirror) {
+        MirrorConfirmation(
+            onConfirm = {
+                confirmMirror = false
+                viewModel.setMirrorDevice(true)
+            },
+            onDismiss = { confirmMirror = false },
+        )
     }
 
     Scaffold(
@@ -139,6 +154,43 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
+            Section("This device") {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Read-only mirror")
+                        Text(
+                            if (settings.isMirrorDevice) {
+                                "Downloads from the sheet. Editing happens on the other phone."
+                            } else {
+                                "This device owns the plans and uploads them to the sheet."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = settings.isMirrorDevice,
+                        onCheckedChange = { wantsMirror ->
+                            // Turning it on replaces everything local, so confirm first.
+                            // Turning it off is harmless — it just resumes uploading.
+                            if (wantsMirror) confirmMirror = true else viewModel.setMirrorDevice(false)
+                        },
+                    )
+                }
+                Text(
+                    "Only one device should own the plans. A sync replaces the whole sheet, so " +
+                        "two uploading devices would overwrite each other.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            HorizontalDivider()
+
             Section("Google Sheet sync") {
                 Text(
                     "Mirrors your plans to the sheet, which is what lets the Apps Script email " +
@@ -170,7 +222,7 @@ fun SettingsScreen(
                         Text("Test connection")
                     }
                     OutlinedButton(onClick = viewModel::requestSync, enabled = !isBusy) {
-                        Text("Sync now")
+                        Text(if (settings.isMirrorDevice) "Download now" else "Sync now")
                     }
                 }
 
@@ -216,7 +268,7 @@ fun SettingsScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = { viewModel.setEmailRecipients(recipients) },
-                        enabled = !isBusy,
+                        enabled = !isBusy && !settings.isMirrorDevice,
                     ) { Text("Save recipients") }
                     OutlinedButton(onClick = viewModel::sendTestEmail, enabled = !isBusy) {
                         Text("Send test email")
@@ -232,6 +284,23 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun MirrorConfirmation(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Make this a read-only mirror?") },
+        text = {
+            Text(
+                "Any plans stored on this device will be replaced by the copy on the sheet, " +
+                    "and this device will stop uploading. Do this on the second phone, not " +
+                    "the one you enter plans on.",
+            )
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Replace and mirror") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

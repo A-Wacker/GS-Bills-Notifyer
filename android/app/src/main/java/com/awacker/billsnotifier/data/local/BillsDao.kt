@@ -80,6 +80,23 @@ interface BillsDao {
     @Query("DELETE FROM bills WHERE id = :billId")
     suspend fun deleteBill(billId: String)
 
+    @Query("DELETE FROM bills")
+    suspend fun deleteAllBills()
+
+    /**
+     * Replaces everything with a downloaded copy, for a read-only mirror device.
+     *
+     * One transaction so the device is never left holding half a download — the digest
+     * runs off this data, and a partial replace would announce a fictional set of payments.
+     * Occurrences go with their bills via the cascade.
+     */
+    @Transaction
+    suspend fun replaceAll(bills: List<BillEntity>, occurrences: List<OccurrenceEntity>) {
+        deleteAllBills()
+        bills.forEach { upsertBill(it) }
+        upsertOccurrences(occurrences)
+    }
+
     @Query("UPDATE bills SET archivedAt = :archivedAt, updatedAt = :archivedAt WHERE id = :billId")
     suspend fun archiveBill(billId: String, archivedAt: Instant)
 

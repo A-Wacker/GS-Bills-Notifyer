@@ -35,6 +35,13 @@ object SyncPayload {
             "action" to Json.Str("digest"),
         ).encode()
 
+    /** Body for a read-only mirror device's download. */
+    fun pull(secret: String): String =
+        Json.obj(
+            "secret" to Json.Str(secret),
+            "action" to Json.Str("pull"),
+        ).encode()
+
     fun sync(
         secret: String,
         plans: List<PlanSnapshot>,
