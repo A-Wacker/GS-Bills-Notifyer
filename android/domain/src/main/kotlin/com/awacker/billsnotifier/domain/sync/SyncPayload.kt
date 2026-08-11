@@ -28,6 +28,13 @@ object SyncPayload {
             "action" to Json.Str("ping"),
         ).encode()
 
+    /** Body for "Send test email" — runs the real digest server-side and reports back. */
+    fun digest(secret: String): String =
+        Json.obj(
+            "secret" to Json.Str(secret),
+            "action" to Json.Str("digest"),
+        ).encode()
+
     fun sync(
         secret: String,
         plans: List<PlanSnapshot>,

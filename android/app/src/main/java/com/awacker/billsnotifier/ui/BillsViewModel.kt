@@ -97,6 +97,7 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
         _isBusy.value = true
         _toast.value = when (val result = container.syncClient.ping(current.webAppUrl, current.sharedSecret)) {
             is SyncResult.Success -> Toast("Connected — script replied at ${result.serverTime}")
+            is SyncResult.Reported -> Toast(result.message)
             is SyncResult.Rejected -> Toast(result.message, isError = true)
             is SyncResult.Failed -> Toast("Could not reach the script: ${result.message}", isError = true)
         }
@@ -105,9 +106,29 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun requestSync() = DigestScheduler.requestSync(getApplication())
 
-    fun runDigestNow() {
+    /** Device-only: runs the on-device digest worker. Sends no email. */
+    fun testNotification() {
         DigestScheduler.runDigestNow(getApplication())
-        _toast.value = Toast("Running the digest now")
+        _toast.value = Toast("Running the notification now — no email is sent by this")
+    }
+
+    /** Asks the Apps Script to run today's email digest and reports what it did. */
+    fun sendTestEmail() = viewModelScope.launch {
+        val current = settingsStore.current()
+        if (!current.isSyncConfigured) {
+            _toast.value = Toast("Add the web app URL and secret first", isError = true)
+            return@launch
+        }
+        _isBusy.value = true
+        _toast.value = when (
+            val result = container.syncClient.runDigest(current.webAppUrl, current.sharedSecret)
+        ) {
+            is SyncResult.Reported -> Toast(result.message)
+            is SyncResult.Success -> Toast("The script ran.")
+            is SyncResult.Rejected -> Toast(result.message, isError = true)
+            is SyncResult.Failed -> Toast("Could not reach the script: ${result.message}", isError = true)
+        }
+        _isBusy.value = false
     }
 
     fun clearToast() {

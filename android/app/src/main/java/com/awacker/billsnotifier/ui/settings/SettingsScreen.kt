@@ -118,8 +118,16 @@ fun SettingsScreen(
                             viewModel.setDigestTime(hour, minute)
                         },
                     ) { Text("Save time") }
-                    OutlinedButton(onClick = viewModel::runDigestNow) { Text("Run digest now") }
+                    OutlinedButton(onClick = viewModel::testNotification) {
+                        Text("Test notification")
+                    }
                 }
+                Text(
+                    "\"Test notification\" only runs the on-device notification — it does not " +
+                        "send an email. Use \"Send test email\" below for that.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Text(
                     "The exact minute isn't guaranteed — Android batches background work to " +
                         "save battery. If it's consistently late, exempt the app from battery " +
@@ -205,9 +213,22 @@ fun SettingsScreen(
                     label = { Text("Email addresses, comma separated") },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Button(onClick = { viewModel.setEmailRecipients(recipients) }) {
-                    Text("Save recipients")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { viewModel.setEmailRecipients(recipients) },
+                        enabled = !isBusy,
+                    ) { Text("Save recipients") }
+                    OutlinedButton(onClick = viewModel::sendTestEmail, enabled = !isBusy) {
+                        Text("Send test email")
+                    }
                 }
+                Text(
+                    "The test runs the real digest on the script, so it obeys the same " +
+                        "once-a-day rule and will tell you if it found nothing due, or nobody " +
+                        "to email.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

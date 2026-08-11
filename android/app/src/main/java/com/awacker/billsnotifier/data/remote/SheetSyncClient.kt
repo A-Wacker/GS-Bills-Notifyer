@@ -1,5 +1,6 @@
 package com.awacker.billsnotifier.data.remote
 
+import com.awacker.billsnotifier.domain.sync.DigestOutcome
 import com.awacker.billsnotifier.domain.sync.PlanSnapshot
 import com.awacker.billsnotifier.domain.sync.SyncPayload
 import kotlinx.coroutines.Dispatchers
@@ -14,6 +15,8 @@ import java.time.LocalDate
 
 sealed interface SyncResult {
     data class Success(val billCount: Int, val occurrenceCount: Int, val serverTime: String) : SyncResult
+    /** The script ran and had something to say about it — shown to the user as-is. */
+    data class Reported(val message: String) : SyncResult
     /** The request reached the script and it said no. Retrying unchanged will not help. */
     data class Rejected(val message: String) : SyncResult
     /** Network or transport level. Worth retrying later. */
@@ -39,6 +42,25 @@ class SheetSyncClient(
                 billCount = 0,
                 occurrenceCount = 0,
                 serverTime = json.optString("serverTime"),
+            )
+        }
+
+    /**
+     * Asks the script to run today's digest now and report what happened.
+     *
+     * Deliberately the real thing rather than a simulation: it respects the same
+     * once-a-day guard, so if the email already went out it says so instead of sending a
+     * duplicate.
+     */
+    suspend fun runDigest(webAppUrl: String, secret: String): SyncResult =
+        post(webAppUrl, SyncPayload.digest(secret)) { json ->
+            SyncResult.Reported(
+                DigestOutcome.describe(
+                    reason = json.optString("reason", "unknown"),
+                    dueTodayCount = json.optInt("dueTodayCount"),
+                    pendingCount = json.optInt("pendingCount"),
+                    recipients = json.optInt("recipients"),
+                ),
             )
         }
 

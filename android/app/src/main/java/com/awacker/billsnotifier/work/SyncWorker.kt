@@ -51,6 +51,9 @@ class SyncWorker(
         )
 
         return when (result) {
+            // Not produced by sync, but the type allows it; treat it as a clean run.
+            is SyncResult.Reported -> Result.success()
+
             is SyncResult.Success -> {
                 settings.markSynced(
                     result.serverTime.ifBlank {

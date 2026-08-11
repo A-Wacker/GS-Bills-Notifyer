@@ -33,6 +33,10 @@ function doPost(e) {
         return jsonResponse({ ok: true, action: 'ping', serverTime: nowIsoString() });
       case 'sync':
         return jsonResponse(handleSync(body.payload || {}));
+      // Backs the app's "Send test email" button. Runs the real digest, including its
+      // idempotency check, and reports what happened rather than just succeeding.
+      case 'digest':
+        return jsonResponse(Object.assign({ ok: true }, sendDailyDigest()));
       default:
         return jsonResponse({ ok: false, error: 'unknown action: ' + body.action });
     }
