@@ -1,11 +1,14 @@
 name: CI
 
-# Pushes to a PR branch are covered by the pull_request event, so triggering on both
-# ran every commit twice and listed six checks on the PR instead of three.
+# Push on every branch, and deliberately NOT pull_request as well.
+#
+# Check runs attach to the commit SHA, so a push-triggered run still shows up on any PR
+# containing that commit — the PR gets its checks either way. Running on pull_request too
+# duplicated every run; running on pull_request *instead* was worse, because it made CI
+# depend on a PR being open, and a branch pushed without one silently went untested.
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: ["**"]
   workflow_dispatch:
 
 concurrency:
