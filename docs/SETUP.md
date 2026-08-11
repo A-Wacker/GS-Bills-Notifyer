@@ -96,6 +96,20 @@ else it can see — no hunting through the deployment dialog.
 > proper OAuth, means a Google Cloud project, an OAuth client tied to your app's signing
 > fingerprint, and a consent screen — a lot of machinery for a two-person household app.
 
+### 3a. Pushing a later change to the script
+
+Editing a `.gs` file does **not** change what the deployed URL runs — a web app serves the
+version that was frozen at deploy time. To publish an edit:
+
+**Deploy → Manage deployments → pencil icon → Version: New version → Deploy.**
+
+That keeps the same `/exec` URL, so nothing changes on either phone. Only **Deploy → New
+deployment** mints a fresh URL, and then every phone needs the new one pasted into Settings —
+which is why the update path above is the one to use.
+
+Either way, **Test connection** on the phone confirms whichever URL is saved still answers,
+and `checkConfiguration` prints the live one.
+
 ---
 
 ## Part 2 — the app (phone)
