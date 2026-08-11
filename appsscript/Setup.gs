@@ -13,10 +13,10 @@
 var SETUP_SECRET = '';
 
 /** Comma-separated addresses that should receive the morning email. */
-var SETUP_RECIPIENTS = '';
+var SETUP_RECIPIENTS = 'alwac3@gmail.com,seouledge@gmail.com;
 
 /** Daily digest trigger window. Apps Script fires somewhere inside the hour, not on the dot. */
-var DIGEST_HOUR = 6;
+var DIGEST_HOUR = 9;
 
 /**
  * Does the whole setup: creates the tabs, stores the shared secret, sets the recipients and
