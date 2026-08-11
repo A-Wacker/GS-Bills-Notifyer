@@ -1,10 +1,93 @@
 /**
- * One-time setup helpers, run by hand from the Apps Script editor.
- * See docs/SETUP.md for the full walkthrough.
+ * One-time setup, run by hand from the Apps Script editor.
+ *
+ * Everything needed is in `setUp()` — see docs/SETUP.md. The individual functions below
+ * remain callable if you ever want to redo one step on its own.
+ *
+ * Note that the Apps Script editor is desktop-web only; there is no Extensions menu in the
+ * Sheets mobile app. Hence the single entry point: the whole desktop session is fill in two
+ * lines, press Run, then deploy.
  */
+
+/** Paste a secret here, or leave blank and setUp() will generate a strong one for you. */
+var SETUP_SECRET = '';
+
+/** Comma-separated addresses that should receive the morning email. */
+var SETUP_RECIPIENTS = '';
 
 /** Daily digest trigger window. Apps Script fires somewhere inside the hour, not on the dot. */
 var DIGEST_HOUR = 6;
+
+/**
+ * Does the whole setup: creates the tabs, stores the shared secret, sets the recipients and
+ * installs the daily trigger.
+ *
+ * Fill in SETUP_RECIPIENTS above (and SETUP_SECRET if you want to choose it yourself), then
+ * press Run. Safe to re-run — it replaces the trigger rather than stacking a second one.
+ *
+ * The generated secret is written to the execution log. Copy it into the app's Settings
+ * screen, then blank SETUP_SECRET out again if you pasted your own.
+ */
+function setUp(secret, recipients) {
+  var sharedSecret = secret || SETUP_SECRET || generateSecret();
+  var emailRecipients = recipients || SETUP_RECIPIENTS;
+
+  initializeSpreadsheet();
+  PropertiesService.getScriptProperties().setProperty('SHARED_SECRET', sharedSecret);
+
+  var parsed = parseRecipients(emailRecipients);
+  if (parsed.length > 0) {
+    setSetting('email_recipients', parsed.join(','));
+  }
+  setSetting('digest_enabled', 'TRUE');
+
+  installDigestTrigger();
+
+  var summary = {
+    sharedSecret: sharedSecret,
+    recipients: parsed,
+    timeZone: scriptTimeZone(),
+    digestHour: DIGEST_HOUR,
+    webAppUrl: deployedWebAppUrl(),
+  };
+
+  Logger.log(
+    [
+      '',
+      '  Setup complete.',
+      '',
+      '  Shared secret (copy into the app, Settings screen):',
+      '    ' + sharedSecret,
+      '',
+      '  Recipients: ' + (parsed.length ? parsed.join(', ') : '(none set — the digest cannot email anyone)'),
+      '  Time zone:  ' + summary.timeZone + '   (must match the phone)',
+      '  Digest:     daily, in the ' + DIGEST_HOUR + ':00 hour',
+      '  Web app:    ' + (summary.webAppUrl || '(not deployed yet — Deploy > New deployment, then re-run checkConfiguration)'),
+      '',
+    ].join('\n')
+  );
+  return summary;
+}
+
+/**
+ * A 256-bit secret from two UUIDs.
+ *
+ * Generating it here rather than telling you to run `openssl rand` means the whole setup is
+ * possible without a terminal — which matters, because the editor already forces you onto a
+ * desktop browser.
+ */
+function generateSecret() {
+  return (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+}
+
+/** The deployed web app URL, or '' when the script has not been deployed yet. */
+function deployedWebAppUrl() {
+  try {
+    return ScriptApp.getService().getUrl() || '';
+  } catch (error) {
+    return '';
+  }
+}
 
 /**
  * Creates the tabs, headers and default settings rows.
@@ -26,20 +109,16 @@ function initializeSpreadsheet() {
     if (settings[key] === undefined) setSetting(key, defaults[key]);
   });
 
-  Logger.log('Spreadsheet initialized. Set Settings!email_recipients before enabling the trigger.');
   return { ok: true, timeZone: scriptTimeZone() };
 }
 
 /**
  * Installs the daily digest trigger, replacing any existing one so re-running doesn't
- * stack up duplicate triggers that would each try to send the same email.
+ * stack up duplicate triggers that would each send the same email.
  */
 function installDigestTrigger() {
   removeDigestTrigger();
   ScriptApp.newTrigger('sendDailyDigest').timeBased().atHour(DIGEST_HOUR).everyDays(1).create();
-  Logger.log(
-    'Digest trigger installed for the ' + DIGEST_HOUR + ':00 hour, ' + scriptTimeZone() + '.'
-  );
   return { ok: true, hour: DIGEST_HOUR, timeZone: scriptTimeZone() };
 }
 
@@ -55,25 +134,14 @@ function removeDigestTrigger() {
 }
 
 /**
- * Stores the shared secret the Android app must present. Paste a long random string here,
- * run once, then clear it from the editor so it isn't left sitting in the source.
- *
- * Generate one with: openssl rand -base64 32
+ * Reports the current state without revealing the secret. Run this after deploying to read
+ * the web app URL back, which saves hunting for it in the deployment dialog.
  */
-function setSharedSecret() {
-  var secret = ''; // <-- paste, run, then blank this out again
-  if (!secret) {
-    throw new Error('Set the secret variable in setSharedSecret() before running it.');
-  }
-  PropertiesService.getScriptProperties().setProperty('SHARED_SECRET', secret);
-  Logger.log('Shared secret stored. Clear the literal from this function now.');
-}
-
-/** Confirms setup without revealing the secret. */
 function checkConfiguration() {
   var settings = getSettingsMap();
   var status = {
     hasSharedSecret: !!PropertiesService.getScriptProperties().getProperty('SHARED_SECRET'),
+    webAppUrl: deployedWebAppUrl() || '(not deployed yet)',
     timeZone: scriptTimeZone(),
     recipients: parseRecipients(settings.email_recipients),
     digestEnabled: settings.digest_enabled === undefined || isTruthyFlag(settings.digest_enabled),
@@ -85,4 +153,12 @@ function checkConfiguration() {
   };
   Logger.log(JSON.stringify(status, null, 2));
   return status;
+}
+
+/** Replaces just the shared secret, leaving everything else alone. */
+function rotateSharedSecret() {
+  var secret = SETUP_SECRET || generateSecret();
+  PropertiesService.getScriptProperties().setProperty('SHARED_SECRET', secret);
+  Logger.log('New shared secret (update the app Settings screen too):\n  ' + secret);
+  return secret;
 }
