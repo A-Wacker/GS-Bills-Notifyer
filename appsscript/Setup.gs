@@ -16,7 +16,7 @@ var SETUP_SECRET = '';
 var SETUP_RECIPIENTS = '';
 
 /** Daily digest trigger window. Apps Script fires somewhere inside the hour, not on the dot. */
-var DIGEST_HOUR = 6;
+var DIGEST_HOUR = 9;
 
 /**
  * Does the whole setup: creates the tabs, stores the shared secret, sets the recipients and
