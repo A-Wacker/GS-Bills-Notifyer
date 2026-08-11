@@ -28,18 +28,28 @@ function sendDailyDigest() {
     var today = todayString();
     var sheet = getSheetOrCreate(SHEET_OCCURRENCES, OCCURRENCE_COLUMNS);
     var rows = readTable(sheet);
-    var due = selectDueRows(rows, today);
+    var status = digestStatus(rows, today);
+    var due = status.pending;
+    var counts = {
+      date: today,
+      dueTodayCount: status.dueTodayCount,
+      pendingCount: status.pendingCount,
+    };
 
-    if (due.length === 0) {
+    if (status.dueTodayCount === 0) {
       // Deliberately silent. A daily "nothing due" email trains people to ignore it.
       Logger.log('Digest: nothing due on ' + today + '.');
-      return { sent: false, reason: 'nothing due', date: today };
+      return Object.assign({ sent: false, reason: 'nothing due' }, counts);
+    }
+    if (due.length === 0) {
+      Logger.log('Digest: already emailed ' + status.dueTodayCount + ' item(s) today.');
+      return Object.assign({ sent: false, reason: 'already notified today' }, counts);
     }
 
     var recipients = parseRecipients(settings.email_recipients);
     if (recipients.length === 0) {
       Logger.log('Digest: ' + due.length + ' due but Settings!email_recipients is empty.');
-      return { sent: false, reason: 'no recipients', count: due.length };
+      return Object.assign({ sent: false, reason: 'no recipients' }, counts);
     }
 
     var staleDays = daysBetweenIsoDates(settings.last_sync_at, today);
@@ -52,7 +62,10 @@ function sendDailyDigest() {
 
     markRowsNotified(sheet, due, today);
     Logger.log('Digest: emailed ' + due.length + ' item(s) to ' + recipients.length + ' recipient(s).');
-    return { sent: true, count: due.length, recipients: recipients.length, date: today };
+    return Object.assign(
+      { sent: true, reason: 'sent', recipients: recipients.length },
+      counts
+    );
   } finally {
     lock.releaseLock();
   }
@@ -67,13 +80,27 @@ function sendDailyDigest() {
  * because the Android app already materialized these dates.
  */
 function selectDueRows(rows, todayIso) {
-  return rows.filter(function (row) {
-    return (
-      String(row.due_date).trim() === todayIso &&
-      !isTruthyFlag(row.paid) &&
-      String(row.notified_on).trim() !== todayIso
-    );
+  return digestStatus(rows, todayIso).pending;
+}
+
+/**
+ * Splits today's picture into "owed" and "not yet announced". Pure — unit-tested.
+ *
+ * Keeping both counts is what lets the caller distinguish a genuinely quiet day from one
+ * where the email already went out — from outside, both simply produce no new email.
+ */
+function digestStatus(rows, todayIso) {
+  var dueToday = rows.filter(function (row) {
+    return String(row.due_date).trim() === todayIso && !isTruthyFlag(row.paid);
   });
+  var pending = dueToday.filter(function (row) {
+    return String(row.notified_on).trim() !== todayIso;
+  });
+  return {
+    dueTodayCount: dueToday.length,
+    pendingCount: pending.length,
+    pending: pending,
+  };
 }
 
 function buildDigestSubject(due, todayIso) {

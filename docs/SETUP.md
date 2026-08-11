@@ -157,9 +157,9 @@ Open the app → **Settings**:
 **The logic**, if you have a checkout:
 
 ```bash
-cd android    && ./gradlew :domain:test           # 105 tests
+cd android    && ./gradlew :domain:test           # 113 tests
 cd android    && ./gradlew :app:testDebugUnitTest  # 25 tests
-cd appsscript && npm test                          # 46 tests
+cd appsscript && npm test                          # 48 tests
 ```
 
 **The app:**
@@ -170,17 +170,26 @@ cd appsscript && npm test                          # 46 tests
 3. Tick payments 1–3. Progress, balance and payoff date should all move.
 4. Edit the plan's amount. Those three should stay ticked.
 
-**The notification:** set the digest time a couple of minutes ahead, background the app, and
-wait. Then use **Settings → Run digest now** for the fast path. Confirm a day with nothing
-due produces no notification at all.
+**The notification** (device only): set the digest time a couple of minutes ahead,
+background the app, and wait. Then use **Settings → Test notification** for the fast path.
+Confirm a day with nothing due produces no notification at all.
+
+**The email:** **Settings → Send test email**. This asks the script to run today's digest
+and reports back what it did — "Emailed 2 payments to 2 addresses", or why not. The two
+paths are independent by design, so the notification working tells you nothing about the
+email, and vice versa.
+
+It runs the *real* digest, so it obeys the same once-a-day rule: a second tap says "today's
+email already went out" rather than sending a duplicate.
 
 **The email, including the part people skip:**
 
 1. Temporarily set an occurrence's due date to today in the app, and sync.
-2. Run `sendDailyDigest` from the Apps Script editor. The email should arrive at every
-   address, and `notified_on` should be stamped on those rows.
-3. **Run it a second time. No second email should be sent.** This is the idempotency check —
-   Apps Script triggers can fire twice, and without this you would get duplicates.
+2. Tap **Send test email** in the app (or run `sendDailyDigest` from the editor). The email
+   should arrive at every address, and `notified_on` should be stamped on those rows.
+3. **Do it a second time. No second email should be sent** — it should tell you the email
+   already went out. This is the idempotency check; Apps Script triggers can fire twice, and
+   without it you would get duplicates every morning.
 4. Sync again from the phone and confirm `notified_on` survived. The phone sends that column
    empty and the script restores it; if that ever broke, every sync would cause a re-send.
 5. Confirm a day with nothing due sends nothing at all.
