@@ -17,6 +17,9 @@ release/
 # Secrets — WEBAPP_URL and SHARED_SECRET live in local.properties (see docs/SETUP.md)
 secrets.properties
 
+# Claude Code personal overrides (permission grants etc.) — not shared
+.claude/settings.local.json
+
 # IDE
 .idea/
 *.iml

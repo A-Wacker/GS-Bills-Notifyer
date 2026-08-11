@@ -63,8 +63,8 @@ there are no conflicts.
 ## Building and testing
 
 ```bash
-cd android    && ./gradlew :domain:test          # 105 tests — schedule maths, payoff, mapping
-cd appsscript && npm test                        # 46 tests — digest selection, sync merge, contract
+cd android    && ./gradlew :domain:test          # 113 tests — schedule maths, payoff, mapping
+cd appsscript && npm test                        # 48 tests — digest selection, sync merge, contract
 cd android    && ./gradlew :app:testDebugUnitTest # 25 tests — Room queries, digest notification
 cd android    && ./gradlew :app:assembleDebug
 ```

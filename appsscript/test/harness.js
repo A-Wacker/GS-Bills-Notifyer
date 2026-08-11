@@ -79,7 +79,13 @@ function loadAppsScript() {
 
   for (const file of SOURCES) {
     const source = fs.readFileSync(path.join(SOURCE_DIR, file), 'utf8');
-    vm.runInThisContext(source, { filename: file });
+    try {
+      vm.runInThisContext(source, { filename: file });
+    } catch (error) {
+      // Without this, one unparseable file fails every test file in the suite with no
+      // indication of which file or why — which is a miserable thing to debug.
+      throw new Error(`${file} could not be parsed: ${error.message}`, { cause: error });
+    }
   }
 
   return { context: globalThis, ...stubs };

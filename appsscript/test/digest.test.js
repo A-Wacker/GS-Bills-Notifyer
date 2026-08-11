@@ -133,3 +133,31 @@ test('buildDigestHtml handles a null staleness reading', () => {
 test('buildDigestHtml falls back to the bill id when the name is missing', () => {
   assert.match(gs.buildDigestHtml([row({ bill_name: '' })], '2026-03-15', 0), /plan-1/);
 });
+
+test('digestStatus separates what is owed today from what is still unannounced', () => {
+  const rows = [
+    row({ occurrence_id: 'a#1', notified_on: '' }),
+    row({ occurrence_id: 'b#1', notified_on: '2026-03-15' }),
+    row({ occurrence_id: 'c#1', paid: 'TRUE' }),
+    row({ occurrence_id: 'd#1', due_date: '2026-04-01' }),
+  ];
+  const status = gs.digestStatus(rows, '2026-03-15');
+
+  // Two unpaid and due today; one of them has already been emailed.
+  assert.equal(status.dueTodayCount, 2);
+  assert.equal(status.pendingCount, 1);
+  assert.deepEqual(
+    status.pending.map((r) => r.occurrence_id),
+    ['a#1']
+  );
+});
+
+test('digestStatus tells a quiet day apart from an already-emailed one', () => {
+  const quiet = gs.digestStatus([row({ due_date: '2026-04-01' })], '2026-03-15');
+  assert.equal(quiet.dueTodayCount, 0);
+  assert.equal(quiet.pendingCount, 0);
+
+  const alreadySent = gs.digestStatus([row({ notified_on: '2026-03-15' })], '2026-03-15');
+  assert.equal(alreadySent.dueTodayCount, 1, 'something is owed today');
+  assert.equal(alreadySent.pendingCount, 0, 'but nothing is left to announce');
+});
