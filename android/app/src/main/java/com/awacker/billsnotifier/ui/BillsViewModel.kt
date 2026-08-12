@@ -8,6 +8,7 @@ import com.awacker.billsnotifier.data.PlanWithProgress
 import com.awacker.billsnotifier.data.prefs.AppSettings
 import com.awacker.billsnotifier.data.remote.SyncResult
 import com.awacker.billsnotifier.domain.model.Bill
+import com.awacker.billsnotifier.domain.model.Money
 import com.awacker.billsnotifier.domain.model.Occurrence
 import com.awacker.billsnotifier.work.DigestScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,8 +19,18 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-/** Transient user-facing message, e.g. the result of a connection test. */
-data class Toast(val message: String, val isError: Boolean = false)
+/**
+ * Transient user-facing message, e.g. the result of a connection test.
+ *
+ * [onAction] backs an optional snackbar button. It exists for undo: an action reachable in
+ * one tap needs to be reversible in one tap.
+ */
+data class Toast(
+    val message: String,
+    val isError: Boolean = false,
+    val actionLabel: String? = null,
+    val onAction: (() -> Unit)? = null,
+)
 
 class BillsViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -74,6 +85,29 @@ class BillsViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             repository.markUnpaid(occurrence.id)
         }
+        requestSync()
+    }
+
+    /**
+     * Marks an installment paid straight from a list, without opening the plan.
+     *
+     * Offered with an undo because this is a single tap on a row the user may only have
+     * meant to read — unlike the detail screen's checkbox, which is already sitting next to
+     * the payment it belongs to.
+     */
+    fun payOccurrence(occurrence: Occurrence) = viewModelScope.launch {
+        if (refuseIfMirror()) return@launch
+        repository.markPaid(occurrence.id, repository.today(), occurrence.amountCents)
+        requestSync()
+        _toast.value = Toast(
+            message = "Marked ${Money.format(occurrence.amountCents)} paid",
+            actionLabel = "Undo",
+            onAction = { undoPayment(occurrence.id) },
+        )
+    }
+
+    private fun undoPayment(occurrenceId: String) = viewModelScope.launch {
+        repository.markUnpaid(occurrenceId)
         requestSync()
     }
 

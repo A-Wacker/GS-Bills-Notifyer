@@ -9,7 +9,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -77,8 +79,19 @@ private fun BillsNavHost(viewModel: BillsViewModel = viewModel()) {
     val toast by viewModel.toast.collectAsStateWithLifecycle()
 
     LaunchedEffect(toast) {
-        toast?.let {
-            snackbarHostState.showSnackbar(it.message)
+        toast?.let { current ->
+            val result = snackbarHostState.showSnackbar(
+                message = current.message,
+                actionLabel = current.actionLabel,
+                // An undo the user never sees is no undo at all, so give it the longer
+                // dismissal window rather than the default few seconds.
+                duration = if (current.onAction == null) {
+                    SnackbarDuration.Short
+                } else {
+                    SnackbarDuration.Long
+                },
+            )
+            if (result == SnackbarResult.ActionPerformed) current.onAction?.invoke()
             viewModel.clearToast()
         }
     }

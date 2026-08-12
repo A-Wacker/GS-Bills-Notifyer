@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,11 +28,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -103,9 +106,21 @@ fun HomeScreen(
                     HighlightCard(
                         title = if (overdue.size == 1) "1 payment overdue" else "${overdue.size} payments overdue",
                         total = overdue.sumOf { it.second.amountCents },
-                        lines = overdue.map { (plan, occurrence) ->
-                            "${plan.bill.name} — ${Money.format(occurrence.amountCents)} " +
-                                "(due ${occurrence.dueDate.format(DAY_FORMAT)})"
+                        rows = overdue.map { (plan, occurrence) ->
+                            // An overdue payment is nearly always one you have just settled
+                            // and forgotten to tick off, so clearing it is worth a tap here
+                            // rather than a trip into the plan. A mirror gets no button: its
+                            // copy is replaced on the next download.
+                            val payAction: (() -> Unit)? = if (settings.isMirrorDevice) {
+                                null
+                            } else {
+                                { viewModel.payOccurrence(occurrence) }
+                            }
+                            CardRow(
+                                text = "${plan.bill.name} — ${Money.format(occurrence.amountCents)} " +
+                                    "(due ${occurrence.dueDate.format(DAY_FORMAT)})",
+                                onPay = payAction,
+                            )
                         },
                         container = MaterialTheme.colorScheme.errorContainer,
                         onContainer = MaterialTheme.colorScheme.onErrorContainer,
@@ -125,8 +140,8 @@ fun HomeScreen(
                     HighlightCard(
                         title = "Due today",
                         total = dueToday.sumOf { it.second.amountCents },
-                        lines = dueToday.map { (plan, occurrence) ->
-                            "${plan.bill.name} — ${Money.format(occurrence.amountCents)}"
+                        rows = dueToday.map { (plan, occurrence) ->
+                            CardRow("${plan.bill.name} — ${Money.format(occurrence.amountCents)}")
                         },
                         container = MaterialTheme.colorScheme.primaryContainer,
                         onContainer = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -149,13 +164,16 @@ fun HomeScreen(
     }
 }
 
+/** One line of a highlight card, optionally clearable in place. */
+private data class CardRow(val text: String, val onPay: (() -> Unit)? = null)
+
 @Composable
 private fun HighlightCard(
     title: String,
     total: Long,
-    lines: List<String>,
-    container: androidx.compose.ui.graphics.Color,
-    onContainer: androidx.compose.ui.graphics.Color,
+    rows: List<CardRow>,
+    container: Color,
+    onContainer: Color,
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = container, contentColor = onContainer)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -167,7 +185,25 @@ private fun HighlightCard(
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(Money.format(total), style = MaterialTheme.typography.titleMedium)
             }
-            lines.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            rows.forEach { row ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        row.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    row.onPay?.let { pay ->
+                        // The card sits on an error container, where a button's default
+                        // primary colour is close to unreadable.
+                        TextButton(
+                            onClick = pay,
+                            colors = ButtonDefaults.textButtonColors(contentColor = onContainer),
+                        ) {
+                            Text("Mark paid")
+                        }
+                    }
+                }
+            }
         }
     }
 }
