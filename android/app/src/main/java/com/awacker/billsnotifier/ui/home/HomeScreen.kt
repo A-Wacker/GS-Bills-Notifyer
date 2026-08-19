@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.awacker.billsnotifier.data.PlanWithProgress
 import com.awacker.billsnotifier.domain.model.Money
+import com.awacker.billsnotifier.domain.model.Occurrence
 import com.awacker.billsnotifier.domain.schedule.PlanMath
 import com.awacker.billsnotifier.ui.BillsViewModel
 import java.time.LocalDate
@@ -65,6 +66,16 @@ fun HomeScreen(
     }
     val overdue = plans.flatMap { plan ->
         PlanMath.overdueAsOf(plan.occurrences, today).map { plan to it }
+    }
+
+    // A mirror gets no buttons: its copy is replaced by the next download, so a mark made
+    // here would vanish before ever reaching the sheet.
+    val payAction: (Occurrence) -> (() -> Unit)? = { occurrence ->
+        if (settings.isMirrorDevice) {
+            null
+        } else {
+            { viewModel.payOccurrence(occurrence) }
+        }
     }
 
     Scaffold(
@@ -107,19 +118,10 @@ fun HomeScreen(
                         title = if (overdue.size == 1) "1 payment overdue" else "${overdue.size} payments overdue",
                         total = overdue.sumOf { it.second.amountCents },
                         rows = overdue.map { (plan, occurrence) ->
-                            // An overdue payment is nearly always one you have just settled
-                            // and forgotten to tick off, so clearing it is worth a tap here
-                            // rather than a trip into the plan. A mirror gets no button: its
-                            // copy is replaced on the next download.
-                            val payAction: (() -> Unit)? = if (settings.isMirrorDevice) {
-                                null
-                            } else {
-                                { viewModel.payOccurrence(occurrence) }
-                            }
                             CardRow(
                                 text = "${plan.bill.name} — ${Money.format(occurrence.amountCents)} " +
                                     "(due ${occurrence.dueDate.format(DAY_FORMAT)})",
-                                onPay = payAction,
+                                onPay = payAction(occurrence),
                             )
                         },
                         container = MaterialTheme.colorScheme.errorContainer,
@@ -141,7 +143,10 @@ fun HomeScreen(
                         title = "Due today",
                         total = dueToday.sumOf { it.second.amountCents },
                         rows = dueToday.map { (plan, occurrence) ->
-                            CardRow("${plan.bill.name} — ${Money.format(occurrence.amountCents)}")
+                            CardRow(
+                                text = "${plan.bill.name} — ${Money.format(occurrence.amountCents)}",
+                                onPay = payAction(occurrence),
+                            )
                         },
                         container = MaterialTheme.colorScheme.primaryContainer,
                         onContainer = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -193,8 +198,8 @@ private fun HighlightCard(
                         modifier = Modifier.weight(1f),
                     )
                     row.onPay?.let { pay ->
-                        // The card sits on an error container, where a button's default
-                        // primary colour is close to unreadable.
+                        // These cards paint their own container, against which a button's
+                        // default primary colour is close to unreadable.
                         TextButton(
                             onClick = pay,
                             colors = ButtonDefaults.textButtonColors(contentColor = onContainer),
