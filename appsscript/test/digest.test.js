@@ -161,3 +161,63 @@ test('digestStatus tells a quiet day apart from an already-emailed one', () => {
   assert.equal(alreadySent.dueTodayCount, 1, 'something is owed today');
   assert.equal(alreadySent.pendingCount, 0, 'but nothing is left to announce');
 });
+
+/**
+ * The bug this exists to fix: archiving a plan (or paying it off) doesn't remove its
+ * future rows from Occurrences — they're just no longer meant to be announced. That fact
+ * only lives on the Bills tab's `active` column, so digestStatus has to be told which
+ * bill ids are still active rather than trusting the Occurrences row alone.
+ */
+test('digestStatus excludes a row whose bill is no longer active', () => {
+  const rows = [
+    row({ occurrence_id: 'active-plan#3', bill_id: 'active-plan' }),
+    row({ occurrence_id: 'archived-plan#5', bill_id: 'archived-plan' }),
+  ];
+  const activeBillIds = gs.activeBillIdSet([
+    { bill_id: 'active-plan', active: 'TRUE' },
+    { bill_id: 'archived-plan', active: 'FALSE' },
+  ]);
+
+  const status = gs.digestStatus(rows, '2026-03-15', activeBillIds);
+
+  assert.equal(status.dueTodayCount, 1);
+  assert.deepEqual(
+    status.pending.map((r) => r.occurrence_id),
+    ['active-plan#3']
+  );
+});
+
+test('digestStatus treats every bill as active when activeBillIds is omitted', () => {
+  // Guards the many pre-existing callers above and in contract.test.js that don't build
+  // an active set at all.
+  const rows = [row({ occurrence_id: 'a#1' }), row({ occurrence_id: 'b#1', bill_id: 'other' })];
+  const status = gs.digestStatus(rows, '2026-03-15');
+  assert.equal(status.dueTodayCount, 2);
+});
+
+test('selectDueRows excludes an archived plan the same way digestStatus does', () => {
+  const rows = [row({ occurrence_id: 'gone#2', bill_id: 'gone' })];
+  const activeBillIds = gs.activeBillIdSet([{ bill_id: 'gone', active: 'FALSE' }]);
+  assert.deepEqual(gs.selectDueRows(rows, '2026-03-15', activeBillIds), []);
+});
+
+test('activeBillIdSet keeps only ids marked active, tolerating the sheet\'s boolean spellings', () => {
+  const ids = gs.activeBillIdSet([
+    { bill_id: 'a', active: 'TRUE' },
+    { bill_id: 'b', active: true },
+    { bill_id: 'c', active: 'yes' },
+    { bill_id: 'd', active: 'FALSE' },
+    { bill_id: 'e', active: '' },
+  ]);
+  assert.deepEqual(Object.keys(ids).sort(), ['a', 'b', 'c']);
+});
+
+test('isBillActive names an id present in the set and rejects one that is not', () => {
+  const ids = gs.activeBillIdSet([{ bill_id: 'a', active: 'TRUE' }]);
+  assert.equal(gs.isBillActive('a', ids), true);
+  assert.equal(gs.isBillActive('missing', ids), false);
+});
+
+test('isBillActive treats an omitted set as "don\'t filter"', () => {
+  assert.equal(gs.isBillActive('anything', undefined), true);
+});

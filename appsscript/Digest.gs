@@ -28,7 +28,12 @@ function sendDailyDigest() {
     var today = todayString();
     var sheet = getSheetOrCreate(SHEET_OCCURRENCES, OCCURRENCE_COLUMNS);
     var rows = readTable(sheet);
-    var status = digestStatus(rows, today);
+    // A plan stays in Occurrences after it's archived or paid off — its future rows are
+    // still there, just no longer meant to be announced. Bills!active is the one place
+    // that's recorded, so it has to be cross-referenced here rather than trusted from the
+    // Occurrences row alone.
+    var activeBillIds = activeBillIdSet(readTable(getSheetOrCreate(SHEET_BILLS, BILL_COLUMNS)));
+    var status = digestStatus(rows, today, activeBillIds);
     var due = status.pending;
     var counts = {
       date: today,
@@ -78,9 +83,13 @@ function sendDailyDigest() {
  * whether from a double-fired trigger or a manual invocation, selects nothing and sends
  * nothing. Note this compares date *strings*; no timezone math happens anywhere here
  * because the Android app already materialized these dates.
+ *
+ * activeBillIds is optional: omit it and every bill counts as active, which is what the
+ * many existing callers here and in contract.test.js rely on. sendDailyDigest always
+ * supplies the real set.
  */
-function selectDueRows(rows, todayIso) {
-  return digestStatus(rows, todayIso).pending;
+function selectDueRows(rows, todayIso, activeBillIds) {
+  return digestStatus(rows, todayIso, activeBillIds).pending;
 }
 
 /**
@@ -89,9 +98,13 @@ function selectDueRows(rows, todayIso) {
  * Keeping both counts is what lets the caller distinguish a genuinely quiet day from one
  * where the email already went out — from outside, both simply produce no new email.
  */
-function digestStatus(rows, todayIso) {
+function digestStatus(rows, todayIso, activeBillIds) {
   var dueToday = rows.filter(function (row) {
-    return String(row.due_date).trim() === todayIso && !isTruthyFlag(row.paid);
+    return (
+      String(row.due_date).trim() === todayIso &&
+      !isTruthyFlag(row.paid) &&
+      isBillActive(row.bill_id, activeBillIds)
+    );
   });
   var pending = dueToday.filter(function (row) {
     return String(row.notified_on).trim() !== todayIso;
@@ -101,6 +114,23 @@ function digestStatus(rows, todayIso) {
     pendingCount: pending.length,
     pending: pending,
   };
+}
+
+/**
+ * Bill ids the Bills tab still marks active — i.e. not archived and not paid off (see
+ * SheetSchema.kt, which computes "active" as !isArchived && !isPaidOff). Pure — unit-tested.
+ */
+function activeBillIdSet(billRows) {
+  var ids = {};
+  billRows.forEach(function (row) {
+    if (isTruthyFlag(row.active)) ids[row.bill_id] = true;
+  });
+  return ids;
+}
+
+/** True when activeBillIds is omitted (caller isn't filtering) or names this bill id. */
+function isBillActive(billId, activeBillIds) {
+  return !activeBillIds || Object.prototype.hasOwnProperty.call(activeBillIds, billId);
 }
 
 function buildDigestSubject(due, todayIso) {
@@ -210,7 +240,8 @@ function markRowsNotified(sheet, rows, todayIso) {
 function previewDailyDigest() {
   var today = todayString();
   var rows = readTable(getSheetOrCreate(SHEET_OCCURRENCES, OCCURRENCE_COLUMNS));
-  var due = selectDueRows(rows, today);
+  var activeBillIds = activeBillIdSet(readTable(getSheetOrCreate(SHEET_BILLS, BILL_COLUMNS)));
+  var due = selectDueRows(rows, today, activeBillIds);
   var settings = getSettingsMap();
   var preview = {
     date: today,
